@@ -29,4 +29,5 @@ else:
 
 # Backward-compatible aliases for older dashboard modules
 SPX_ROOT = SPX_ALGO_ROOT
+OPTIONS_ALGO_ROOT = LEGACY_OPTIONS_ALGO_ROOT
 OPTIONS_ROOT = LEGACY_OPTIONS_ALGO_ROOT
