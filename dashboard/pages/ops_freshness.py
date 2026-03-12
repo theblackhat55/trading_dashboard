@@ -1,37 +1,120 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pandas as pd
 import streamlit as st
 
+from dashboard.config import OPTIONS_ALGO_V2_DATA_ROOT
 from dashboard.loaders.spx_loader import file_freshness
+
+
+def _file_row(name: str, path: Path) -> dict[str, object]:
+    exists = path.exists()
+    modified_at = None
+    age_hours = None
+
+    if exists:
+        stat = path.stat()
+        modified_dt = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+        modified_at = modified_dt.isoformat()
+        age_hours = (datetime.now(timezone.utc) - modified_dt).total_seconds() / 3600.0
+
+    return {
+        "name": name,
+        "path": str(path),
+        "exists": exists,
+        "modified_at": modified_at,
+        "age_hours": age_hours,
+    }
+
+
+def _options_freshness_df() -> pd.DataFrame:
+    scan_dir = OPTIONS_ALGO_V2_DATA_ROOT / "scan_results"
+    validation_dir = OPTIONS_ALGO_V2_DATA_ROOT / "validation"
+    state_dir = OPTIONS_ALGO_V2_DATA_ROOT / "state"
+
+    latest_scan = sorted(scan_dir.glob("scan_*.json"))
+    latest_scan_path = latest_scan[-1] if latest_scan else scan_dir / "scan_latest.json"
+
+    rows = [
+        _file_row("options_latest_scan", latest_scan_path),
+        _file_row(
+            "options_paper_live_runs",
+            validation_dir / "paper_live_runs.jsonl",
+        ),
+        _file_row(
+            "options_paper_live_symbol_decisions",
+            validation_dir / "paper_live_symbol_decisions.jsonl",
+        ),
+        _file_row(
+            "options_iv_proxy_history",
+            state_dir / "iv_proxy_history.jsonl",
+        ),
+    ]
+    return pd.DataFrame(rows)
 
 
 def render(spx_root):
     st.title("🛠️ Ops / File Freshness")
 
-    df = file_freshness(spx_root)
-    if df.empty:
-        st.warning("No tracked files found.")
-        return
+    st.subheader("SPX Freshness")
+    spx_df = file_freshness(spx_root)
+    if spx_df.empty:
+        st.warning("No tracked SPX files found.")
+    else:
+        st.dataframe(spx_df, use_container_width=True, height=300)
 
-    st.dataframe(df, use_container_width=True, height=420)
+        stale = spx_df[
+            (spx_df["exists"] == True)
+            & (spx_df["age_hours"].notna())
+            & (spx_df["age_hours"] > 24)
+        ]
+        missing = spx_df[spx_df["exists"] == False]
 
-    stale = df[(df["exists"] == True) & (df["age_hours"].notna()) & (df["age_hours"] > 24)]
-    missing = df[df["exists"] == False]
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Missing SPX Files")
+            if missing.empty:
+                st.success("No missing tracked SPX files.")
+            else:
+                st.dataframe(missing, use_container_width=True)
+        with col2:
+            st.subheader("Stale SPX Files (>24h)")
+            if stale.empty:
+                st.success("No stale SPX files.")
+            else:
+                st.dataframe(stale, use_container_width=True)
 
     st.divider()
 
-    col1, col2 = st.columns(2)
+    st.subheader("Options Algo V2 Freshness")
+    options_df = _options_freshness_df()
+    if options_df.empty:
+        st.warning("No tracked options files found.")
+        return
 
+    st.dataframe(options_df, use_container_width=True, height=220)
+
+    stale_options = options_df[
+        (options_df["exists"] == True)
+        & (options_df["age_hours"].notna())
+        & (options_df["age_hours"] > 24)
+    ]
+    missing_options = options_df[options_df["exists"] == False]
+
+    col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Missing Files")
-        if missing.empty:
-            st.success("No missing tracked files.")
+        st.subheader("Missing Options Files")
+        if missing_options.empty:
+            st.success("No missing tracked options files.")
         else:
-            st.dataframe(missing, use_container_width=True)
+            st.dataframe(missing_options, use_container_width=True)
 
     with col2:
-        st.subheader("Stale Files (>24h)")
-        if stale.empty:
-            st.success("No stale tracked files.")
+        st.subheader("Stale Options Files (>24h)")
+        if stale_options.empty:
+            st.success("No stale options files.")
         else:
-            st.dataframe(stale, use_container_width=True)
+            st.dataframe(stale_options, use_container_width=True)

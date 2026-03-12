@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from dashboard.config import OPTIONS_ALGO_ROOT, SPX_ALGO_ROOT
+from dashboard.config import OPTIONS_ALGO_V2_DATA_ROOT, OPTIONS_ALGO_ROOT, SPX_ALGO_ROOT
 from dashboard.loaders import options_loader, spx_loader
 
 
@@ -28,7 +28,7 @@ def _status_chip(label: str, ok: bool) -> None:
 
 def render():
     st.title("📊 Shared Trading Dashboard")
-    st.caption("Unified UI for SPX Algo and Options Algo")
+    st.caption("Unified UI for SPX Algo and Options Algo V2")
 
     st.subheader("System Status")
 
@@ -65,64 +65,104 @@ def render():
 
         m1, m2, m3 = st.columns(3)
         m1.metric("Forecast Status", status.get("status", "—"))
-        m2.metric("Forecast Date", status.get("hybrid_date") or status.get("range_skew_date") or "—")
+        m2.metric(
+            "Forecast Date",
+            status.get("hybrid_date") or status.get("range_skew_date") or "—",
+        )
         m3.metric("Scorecard Rows", len(scorecard) if not scorecard.empty else 0)
 
         if freshness.empty:
             st.info("No SPX freshness data available.")
         else:
-            display_cols = [c for c in ["name", "exists", "modified_at", "age_hours"] if c in freshness.columns]
+            display_cols = [
+                c
+                for c in ["name", "exists", "modified_at", "age_hours"]
+                if c in freshness.columns
+            ]
             st.markdown("### SPX File Freshness")
             st.dataframe(freshness[display_cols], use_container_width=True, height=260)
 
     with right:
-        st.markdown("## Options Algo")
+        st.markdown("## Options Algo V2")
 
-        latest_options_signal = options_loader.load_latest_signal()
-        positions = options_loader.load_positions()
-        outcomes = options_loader.load_trade_outcomes()
+        latest = options_loader.build_latest_scan_summary()
+        paper_runs = options_loader.load_paper_live_runs()
 
-        sig_ok = latest_options_signal is not None
-        pos_ok = positions is not None
-        out_ok = outcomes is not None and not outcomes.empty
+        latest_scan_ok = bool(latest)
+        paper_runs_ok = not paper_runs.empty
+        data_root_ok = OPTIONS_ALGO_V2_DATA_ROOT.exists()
 
         c1, c2 = st.columns(2)
         with c1:
-            _status_chip("Latest Options Signal", sig_ok)
+            _status_chip("Latest Scan", latest_scan_ok)
         with c2:
-            _status_chip("Trade Outcomes", out_ok)
+            _status_chip("Paper-Live Logs", paper_runs_ok)
 
         c3, c4 = st.columns(2)
         with c3:
-            _status_chip("Positions", pos_ok)
+            _status_chip("Options Data Root", data_root_ok)
         with c4:
-            _status_chip("Options Root", OPTIONS_ALGO_ROOT.exists())
+            _status_chip(
+                "Degraded Live Mode",
+                not bool(latest.get("degraded_live_mode")) if latest else False,
+            )
 
         st.markdown("### Options Summary")
 
-        generated_at = "—"
-        scan_date = "—"
-        if isinstance(latest_options_signal, dict):
-            generated_at = latest_options_signal.get("generated_at", "—")
-            scan_date = latest_options_signal.get("scan_date", "—")
-
-        position_count = 0
-        if isinstance(positions, dict):
-            if "positions" in positions and isinstance(positions["positions"], list):
-                position_count = len(positions["positions"])
-            else:
-                position_count = len(positions)
-
         o1, o2, o3 = st.columns(3)
-        o1.metric("Scan Date", scan_date)
-        o2.metric("Generated At", generated_at)
-        o3.metric("Positions", position_count)
+        o1.metric("Run ID", latest.get("run_id", "—"))
+        o2.metric("Passed", latest.get("total_passed", 0))
+        o3.metric("Rejected", latest.get("total_rejected", 0))
 
-        if outcomes is not None and not outcomes.empty:
-            st.markdown("### Recent Trade Outcomes")
-            st.dataframe(outcomes.tail(10), use_container_width=True, height=260)
+        o4, o5, o6 = st.columns(3)
+        o4.metric("Trade Ideas", latest.get("trade_idea_count", 0))
+        o5.metric(
+            "Top Candidates",
+            len(latest.get("top_trade_candidate_symbols", [])),
+        )
+        o6.metric(
+            "IV Ready Symbols",
+            len(latest.get("iv_rank_ready_symbols", [])),
+        )
+
+        st.markdown("### Options Highlights")
+        st.write(
+            {
+                "runtime_mode": latest.get("runtime_mode"),
+                "as_of_date": latest.get("as_of_date"),
+                "degraded_live_mode": latest.get("degraded_live_mode"),
+                "top_trade_candidate_symbols": latest.get(
+                    "top_trade_candidate_symbols",
+                    [],
+                ),
+                "placeholder_iv_rank": latest.get(
+                    "used_placeholder_iv_rank_inputs",
+                    False,
+                ),
+            }
+        )
+
+        if not paper_runs.empty:
+            st.markdown("### Recent Paper-Live Runs")
+            display_cols = [
+                col
+                for col in [
+                    "timestamp_utc",
+                    "run_id",
+                    "runtime_mode",
+                    "passed_count",
+                    "rejected_count",
+                    "degraded_live_mode",
+                ]
+                if col in paper_runs.columns
+            ]
+            st.dataframe(
+                paper_runs.tail(10)[display_cols],
+                use_container_width=True,
+                height=220,
+            )
         else:
-            st.info("No trade outcomes found for Options Algo.")
+            st.info("No paper-live runs found for Options Algo V2.")
 
     st.divider()
     st.subheader("Quick Navigation")
@@ -132,6 +172,7 @@ def render():
         - **SPX Forecasts** → latest forecast payload details
         - **SPX Comparison History** → scorecard and model tracking
         - **SPX Archive Browser** → archived forecast inspection
+        - **Options Overview** → options scan artifacts, diagnostics, and paper-live logs
         - **Ops / Freshness** → file freshness / missing artifact checks
         """
     )
