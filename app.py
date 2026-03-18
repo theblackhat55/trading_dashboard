@@ -9,6 +9,7 @@ from dashboard.pages import (
     home,
     ops_freshness,
     options_overview,
+    shared_health_check,
     spx_actual_vs_predicted,
     spx_archive_browser,
     spx_comparison_history,
@@ -36,6 +37,7 @@ page = st.sidebar.radio(
         "🎯 SPX Actual vs Predicted",
         "🗂️ SPX Archive Browser",
         "🧾 Options Overview",
+        "🩺 Shared Health Check",
         "🛠️ Ops / Freshness",
     ],
 )
@@ -60,5 +62,7 @@ elif page == "🗂️ SPX Archive Browser":
     spx_archive_browser.render(SPX_ALGO_ROOT)
 elif page == "🧾 Options Overview":
     options_overview.render()
+elif page == "🩺 Shared Health Check":
+    shared_health_check.render()
 elif page == "🛠️ Ops / Freshness":
     ops_freshness.render(SPX_ALGO_ROOT)
