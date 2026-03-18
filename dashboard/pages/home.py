@@ -26,6 +26,26 @@ def _status_chip(label: str, ok: bool) -> None:
     )
 
 
+def _state_chip(label: str, active: bool, true_text: str = "Yes", false_text: str = "No") -> None:
+    color = "#ea580c" if active else "#16a34a"
+    text = true_text if active else false_text
+    st.markdown(
+        f"""
+        <div style="
+            display:inline-block;
+            padding:0.30rem 0.65rem;
+            border-radius:999px;
+            background:{color};
+            color:white;
+            font-weight:600;
+            font-size:0.85rem;">
+            {label}: {text}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render():
     st.title("📊 Shared Trading Dashboard")
     st.caption("Unified UI for SPX Algo and Options Algo V2")
@@ -102,9 +122,11 @@ def render():
         with c3:
             _status_chip("Options Data Root", data_root_ok)
         with c4:
-            _status_chip(
+            _state_chip(
                 "Degraded Live Mode",
-                not bool(latest.get("degraded_live_mode")) if latest else False,
+                bool(latest.get("degraded_live_mode")) if latest else False,
+                true_text="Yes",
+                false_text="No",
             )
 
         st.markdown("### Options Summary")
