@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from dashboard.config import OPTIONS_ALGO_V2_DATA_ROOT
+from dashboard.loaders import options_loader
 from dashboard.loaders.spx_loader import file_freshness
 
 
@@ -38,20 +39,37 @@ def _options_freshness_df() -> pd.DataFrame:
     latest_scan = sorted(scan_dir.glob("scan_*.json"))
     latest_scan_path = latest_scan[-1] if latest_scan else scan_dir / "scan_latest.json"
 
+    latest_summary = options_loader.build_latest_scan_summary()
+    runs = options_loader.load_paper_live_runs()
+    latest_run = {}
+    if not runs.empty:
+        latest_run = runs.sort_values(by="timestamp_utc", ascending=False).iloc[0].to_dict()
+
     rows = [
-        _file_row("options_latest_scan", latest_scan_path),
-        _file_row(
-            "options_paper_live_runs",
-            validation_dir / "paper_live_runs.jsonl",
-        ),
-        _file_row(
-            "options_paper_live_symbol_decisions",
-            validation_dir / "paper_live_symbol_decisions.jsonl",
-        ),
-        _file_row(
-            "options_iv_proxy_history",
-            state_dir / "iv_proxy_history.jsonl",
-        ),
+        {
+            **_file_row("options_latest_scan", latest_scan_path),
+            "latest_run_id": latest_summary.get("run_id"),
+            "latest_as_of_date": latest_summary.get("as_of_date"),
+            "latest_symbol_count": latest_summary.get("total_candidates"),
+        },
+        {
+            **_file_row("options_paper_live_runs", validation_dir / "paper_live_runs.jsonl"),
+            "latest_run_id": latest_run.get("run_id"),
+            "latest_as_of_date": latest_run.get("as_of_date"),
+            "latest_symbol_count": latest_run.get("symbol_count"),
+        },
+        {
+            **_file_row("options_paper_live_symbol_decisions", validation_dir / "paper_live_symbol_decisions.jsonl"),
+            "latest_run_id": latest_run.get("run_id"),
+            "latest_as_of_date": latest_run.get("as_of_date"),
+            "latest_symbol_count": latest_run.get("symbol_count"),
+        },
+        {
+            **_file_row("options_iv_proxy_history", state_dir / "iv_proxy_history.jsonl"),
+            "latest_run_id": None,
+            "latest_as_of_date": latest_summary.get("as_of_date"),
+            "latest_symbol_count": None,
+        },
     ]
     return pd.DataFrame(rows)
 
@@ -95,7 +113,7 @@ def render(spx_root):
         st.warning("No tracked options files found.")
         return
 
-    st.dataframe(options_df, use_container_width=True, height=220)
+    st.dataframe(options_df, use_container_width=True, height=240)
 
     stale_options = options_df[
         (options_df["exists"] == True)

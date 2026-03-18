@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-import json
-
+import pandas as pd
 import streamlit as st
 
 from dashboard.loaders import options_loader
 
 
-def _render_kv_dict(title: str, data: dict[str, object]) -> None:
-    st.subheader(title)
+def _dict_df(data: dict[str, object], key_name: str, value_name: str) -> pd.DataFrame:
     if not data:
-        st.info("No data available.")
-        return
-    st.json(data)
+        return pd.DataFrame(columns=[key_name, value_name])
+    rows = [{key_name: k, value_name: v} for k, v in data.items()]
+    return pd.DataFrame(rows).sort_values(by=value_name, ascending=False)
+
+
+def _symbol_list_df(symbols: list[str], column_name: str = "symbol") -> pd.DataFrame:
+    return pd.DataFrame([{column_name: s} for s in symbols]) if symbols else pd.DataFrame(columns=[column_name])
 
 
 def render():
@@ -31,62 +33,77 @@ def render():
 
     st.subheader("Latest Scan Status")
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Run ID", latest.get("run_id", "—"))
-    c2.metric("Runtime Mode", latest.get("runtime_mode", "—"))
-    c3.metric("Passed", latest.get("total_passed", 0))
-    c4.metric("Rejected", latest.get("total_rejected", 0))
+    c2.metric("As Of", latest.get("as_of_date", "—"))
+    c3.metric("Mode", latest.get("runtime_mode", "—"))
+    c4.metric("Passed", latest.get("total_passed", 0))
+    c5.metric("Rejected", latest.get("total_rejected", 0))
+    c6.metric("Trade Ideas", latest.get("trade_idea_count", 0))
 
-    c5, c6, c7, c8 = st.columns(4)
-    c5.metric("Trade Ideas", latest.get("trade_idea_count", 0))
-    c6.metric("Degraded Live Mode", "Yes" if latest.get("degraded_live_mode") else "No")
-    c7.metric(
-        "Placeholder IV Rank",
-        "Yes" if latest.get("used_placeholder_iv_rank_inputs") else "No",
-    )
-    c8.metric("IV Ready Symbols", len(latest.get("iv_rank_ready_symbols", [])))
+    c7, c8, c9, c10 = st.columns(4)
+    c7.metric("Degraded Live Mode", "Yes" if latest.get("degraded_live_mode") else "No")
+    c8.metric("Placeholder IV Rank", "Yes" if latest.get("used_placeholder_iv_rank_inputs") else "No")
+    c9.metric("IV Ready Symbols", len(latest.get("iv_rank_ready_symbols", [])))
+    c10.metric("Top Candidates", len(latest.get("top_trade_candidate_symbols", [])))
 
     st.markdown("---")
 
     left, right = st.columns(2)
 
     with left:
-        _render_kv_dict(
-            "Top Trade Candidate Symbols",
-            {"symbols": latest.get("top_trade_candidate_symbols", [])},
-        )
-        _render_kv_dict(
-            "Rejection Reason Counts",
-            latest.get("rejection_reason_counts", {}) or {},
-        )
-        _render_kv_dict(
-            "Signal State Counts",
-            latest.get("signal_state_counts", {}) or {},
-        )
+        st.subheader("Top Trade Candidate Symbols")
+        top_symbols_df = _symbol_list_df(latest.get("top_trade_candidate_symbols", []))
+        if top_symbols_df.empty:
+            st.info("No top trade candidate symbols.")
+        else:
+            st.dataframe(top_symbols_df, use_container_width=True, height=180)
+
+        st.subheader("Rejection Reason Counts")
+        rejection_df = _dict_df(latest.get("rejection_reason_counts", {}) or {}, "reason", "count")
+        if rejection_df.empty:
+            st.info("No rejection reasons found.")
+        else:
+            st.bar_chart(rejection_df.set_index("reason"))
+
+        st.subheader("Signal State Counts")
+        signal_df = _dict_df(latest.get("signal_state_counts", {}) or {}, "signal_state", "count")
+        if signal_df.empty:
+            st.info("No signal state counts.")
+        else:
+            st.bar_chart(signal_df.set_index("signal_state"))
 
     with right:
-        _render_kv_dict(
-            "Strategy Type Counts",
-            latest.get("strategy_type_counts", {}) or {},
-        )
-        _render_kv_dict(
-            "Quote Quality Counts",
-            latest.get("aggregate_quote_quality_counts", {}) or {},
-        )
-        _render_kv_dict(
-            "IV Rank Readiness",
+        st.subheader("Strategy Type Counts")
+        strategy_df = _dict_df(latest.get("strategy_type_counts", {}) or {}, "strategy_type", "count")
+        if strategy_df.empty:
+            st.info("No strategy type counts.")
+        else:
+            st.bar_chart(strategy_df.set_index("strategy_type"))
+
+        st.subheader("Quote Quality Counts")
+        quote_df = _dict_df(latest.get("aggregate_quote_quality_counts", {}) or {}, "metric", "count")
+        if quote_df.empty:
+            st.info("No quote quality metrics.")
+        else:
+            st.dataframe(quote_df, use_container_width=True, height=250)
+
+        st.subheader("IV Rank Readiness")
+        ready_symbols = iv_readiness.get("ready_symbols", [])
+        insufficient_symbols = iv_readiness.get("insufficient_history_symbols", [])
+        st.write(
             {
-                "ready_symbols": iv_readiness.get("ready_symbols", []),
-                "insufficient_history_symbols": iv_readiness.get(
-                    "insufficient_history_symbols",
-                    [],
-                ),
-                "observation_count_by_symbol": iv_readiness.get(
-                    "observation_count_by_symbol",
-                    {},
-                ),
-            },
+                "ready_symbol_count": len(ready_symbols),
+                "insufficient_history_symbol_count": len(insufficient_symbols),
+                "iv_history_rows": iv_readiness.get("iv_history_rows", 0),
+            }
         )
+        readiness_counts = iv_readiness.get("observation_count_by_symbol", {}) or {}
+        readiness_df = _dict_df(readiness_counts, "symbol", "observation_count")
+        if readiness_df.empty:
+            st.info("No IV rank readiness counts available.")
+        else:
+            st.dataframe(readiness_df, use_container_width=True, height=220)
 
     st.markdown("---")
 
@@ -111,21 +128,18 @@ def render():
         r1, r2, r3, r4 = st.columns(4)
         avg_pass_rate = recent_summary.get("average_pass_rate")
         r1.metric("Run Count", recent_summary.get("run_count", 0))
-        r2.metric(
-            "Average Pass Rate",
-            f"{avg_pass_rate:.2%}" if isinstance(avg_pass_rate, float) else "—",
-        )
-        r3.metric(
-            "Degraded Runs",
-            recent_summary.get("degraded_live_mode_count", 0),
-        )
-        r4.metric(
-            "Placeholder IV Rank Runs",
-            recent_summary.get("used_placeholder_iv_rank_inputs_count", 0),
-        )
+        r2.metric("Average Pass Rate", f"{avg_pass_rate:.2%}" if isinstance(avg_pass_rate, float) else "—")
+        r3.metric("Degraded Runs", recent_summary.get("degraded_live_mode_count", 0))
+        r4.metric("Placeholder IV Rank Runs", recent_summary.get("used_placeholder_iv_rank_inputs_count", 0))
 
     if not paper_live_runs.empty:
         st.subheader("Recent Paper-Live Runs")
+        runs = paper_live_runs.copy()
+        for col in ["passed_symbols", "top_trade_candidate_symbols"]:
+            if col in runs.columns:
+                runs[col] = runs[col].apply(
+                    lambda x: ", ".join(x) if isinstance(x, list) else x
+                )
         display_cols = [
             col
             for col in [
@@ -141,12 +155,12 @@ def render():
                 "passed_symbols",
                 "top_trade_candidate_symbols",
             ]
-            if col in paper_live_runs.columns
+            if col in runs.columns
         ]
         st.dataframe(
-            paper_live_runs.tail(20)[display_cols],
+            runs.sort_values(by="timestamp_utc", ascending=False)[display_cols].head(20),
             use_container_width=True,
-            height=260,
+            height=320,
         )
     else:
         st.info("No paper-live run log found.")
@@ -165,12 +179,8 @@ def render():
     if iv_history.empty:
         st.info("No IV proxy history found.")
     else:
-        iv_cols = [
-            col
-            for col in ["as_of_date", "symbol", "implied_vol_proxy", "source"]
-            if col in iv_history.columns
-        ]
-        st.dataframe(iv_history.tail(50)[iv_cols], use_container_width=True, height=240)
+        iv_cols = [col for col in ["as_of_date", "symbol", "implied_vol_proxy", "source"] if col in iv_history.columns]
+        st.dataframe(iv_history.sort_values(by="as_of_date", ascending=False)[iv_cols].head(50), use_container_width=True, height=240)
 
     with st.expander("Latest Scan JSON"):
         if latest_scan:

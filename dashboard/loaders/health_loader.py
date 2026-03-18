@@ -7,8 +7,7 @@ from typing import Any
 
 import pandas as pd
 
-SPX_ROOT = Path("/root/spx_algo")
-OPTIONS_ROOT = Path("/root/options_algo")
+from dashboard.config import OPTIONS_ALGO_V2_DATA_ROOT, SPX_ALGO_ROOT
 
 
 def _safe_read_json(path: Path) -> dict[str, Any] | None:
@@ -16,7 +15,26 @@ def _safe_read_json(path: Path) -> dict[str, Any] | None:
         if not path.exists():
             return None
         with open(path, "r") as f:
-            return json.load(f)
+            payload = json.load(f)
+        return payload if isinstance(payload, dict) else None
+    except Exception:
+        return None
+
+
+def _safe_read_jsonl_last(path: Path) -> dict[str, Any] | None:
+    try:
+        if not path.exists():
+            return None
+        last: dict[str, Any] | None = None
+        with open(path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                obj = json.loads(line)
+                if isinstance(obj, dict):
+                    last = obj
+        return last
     except Exception:
         return None
 
@@ -85,7 +103,7 @@ def _status_emoji(bucket: str) -> str:
 
 
 def load_spx_health(spx_root: Path | None = None) -> dict[str, Any]:
-    spx_root = spx_root or SPX_ROOT
+    spx_root = spx_root or SPX_ALGO_ROOT
 
     signal_path = spx_root / "output/signals/latest_signal.json"
     hybrid_path = spx_root / "output/forecasts/latest_gap_augmented_hybrid_ohlc_forecast.json"
@@ -134,23 +152,41 @@ def load_spx_health(spx_root: Path | None = None) -> dict[str, Any]:
     }
 
 
-def load_options_health(options_root: Path | None = None) -> dict[str, Any]:
-    options_root = options_root or OPTIONS_ROOT
+def load_options_health(options_data_root: Path | None = None) -> dict[str, Any]:
+    data_root = options_data_root or OPTIONS_ALGO_V2_DATA_ROOT
+    scan_dir = data_root / "scan_results"
+    validation_dir = data_root / "validation"
+    state_dir = data_root / "state"
 
-    candidates = {
-        "latest_signal": options_root / "output/signals/options_signal_latest.json",
-        "latest_options_signal": options_root / "output/signals/options_signal_latest.json",
-        "trade_outcomes_log": options_root / "output/trades/trade_outcomes.jsonl",
-        "latest_papertrade_log": options_root / "output/trades/trade_outcomes.jsonl",
-        "options_data_root": options_root / "output",
+    scan_files = sorted(scan_dir.glob("scan_*.json"))
+    latest_scan_path = scan_files[-1] if scan_files else scan_dir / "scan_latest.json"
+
+    runs_path = validation_dir / "paper_live_runs.jsonl"
+    symbol_decisions_path = validation_dir / "paper_live_symbol_decisions.jsonl"
+    iv_history_path = state_dir / "iv_proxy_history.jsonl"
+
+    files = {
+        "latest_scan": _file_info(latest_scan_path),
+        "paper_live_runs": _file_info(runs_path),
+        "paper_live_symbol_decisions": _file_info(symbol_decisions_path),
+        "iv_proxy_history": _file_info(iv_history_path),
     }
 
-    files = {name: _file_info(path) for name, path in candidates.items()}
     buckets = {
         name: _age_bucket(info.get("mtime"))
         for name, info in files.items()
         if "mtime" in info
     }
+
+    latest_scan = _safe_read_json(latest_scan_path)
+    latest_run = _safe_read_jsonl_last(runs_path)
+
+    latest_candidates: dict[str, Any] | None = None
+    if isinstance(latest_scan, dict):
+        latest_candidates = {
+            "trade_candidates_count": len(latest_scan.get("trade_candidates", []) or []),
+            "trade_ideas_count": len(latest_scan.get("trade_ideas", []) or []),
+        }
 
     overall = "ok"
     if any(v == "bad" for v in buckets.values()):
@@ -158,18 +194,15 @@ def load_options_health(options_root: Path | None = None) -> dict[str, Any]:
     elif any(v == "warn" for v in buckets.values()):
         overall = "warn"
 
-    latest_signal = _safe_read_json(candidates["latest_signal"])
-    latest_scan = _safe_read_json(candidates["latest_options_signal"])
-    latest_candidates = None
-
     return {
         "overall": overall,
         "overall_emoji": _status_emoji(overall),
-        "latest_signal": latest_signal,
+        "latest_signal": latest_run,
         "latest_scan": latest_scan,
         "latest_candidates": latest_candidates,
         "files": files,
         "buckets": buckets,
+        "data_root": str(data_root),
     }
 
 
