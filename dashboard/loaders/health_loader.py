@@ -138,10 +138,10 @@ def load_options_health(options_root: Path | None = None) -> dict[str, Any]:
     options_root = options_root or OPTIONS_ROOT
 
     candidates = {
-        "latest_signal": options_root / "output/signals/latest_signal.json",
-        "latest_scan": options_root / "output/scans/latest_scan.json",
-        "latest_candidates": options_root / "output/scans/latest_candidates.json",
-        "latest_papertrade_log": options_root / "output/logs/paper_live.log",
+        "latest_signal": options_root / "output/signals/options_signal_latest.json",
+        "latest_options_signal": options_root / "output/signals/options_signal_latest.json",
+        "trade_outcomes_log": options_root / "output/trades/trade_outcomes.jsonl",
+        "latest_papertrade_log": options_root / "output/trades/trade_outcomes.jsonl",
         "options_data_root": options_root / "output",
     }
 
@@ -159,8 +159,8 @@ def load_options_health(options_root: Path | None = None) -> dict[str, Any]:
         overall = "warn"
 
     latest_signal = _safe_read_json(candidates["latest_signal"])
-    latest_scan = _safe_read_json(candidates["latest_scan"])
-    latest_candidates = _safe_read_json(candidates["latest_candidates"])
+    latest_scan = _safe_read_json(candidates["latest_options_signal"])
+    latest_candidates = None
 
     return {
         "overall": overall,
