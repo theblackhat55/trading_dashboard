@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 
@@ -61,14 +63,6 @@ def render() -> None:
     st.caption(f"Generated at: {shared['generated_at']}")
 
     if spx_monitor:
-
-    ops_md_path = "/root/spx_algo/output/monitoring/daily_ops_summary.md"
-    st.markdown("#### LLM / Ops Summary")
-    try:
-        with open(ops_md_path, "r", encoding="utf-8") as f:
-            st.markdown(f.read())
-    except Exception as e:
-        st.caption(f"Could not load ops summary: {e}")
         st.subheader("SPX Monitoring Snapshot")
 
         c1, c2, c3, c4 = st.columns(4)
@@ -106,6 +100,13 @@ def render() -> None:
             st.markdown("#### Reasons / Evidence")
             for r in reasons:
                 st.write(f"- {r}")
+
+        ops_md_path = Path("/root/spx_algo/output/monitoring/daily_ops_summary.md")
+        st.markdown("#### LLM / Ops Summary")
+        try:
+            st.markdown(ops_md_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            st.caption(f"Could not load ops summary: {e}")
 
     spx = shared["spx"]
     options = shared["options"]
