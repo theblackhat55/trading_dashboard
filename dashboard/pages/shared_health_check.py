@@ -54,13 +54,53 @@ def render() -> None:
     st.title("🩺 Shared Health Check")
     st.caption("Unified health and freshness checks for SPX Algo + Options Algo")
 
-    health = load_shared_health()
+    shared = load_shared_health()
+    spx_monitor = shared.get("spx_monitoring", {})
 
-    st.markdown(f"### Overall Status: {health['overall_emoji']} {health['overall'].upper()}")
-    st.caption(f"Generated at: {health['generated_at']}")
+    st.markdown(f"### Overall Status: {shared['overall_emoji']} {shared['overall'].upper()}")
+    st.caption(f"Generated at: {shared['generated_at']}")
 
-    spx = health["spx"]
-    options = health["options"]
+    if spx_monitor:
+        st.subheader("SPX Monitoring Snapshot")
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Overall", spx_monitor.get("overall_status_pill", "⚪ UNKNOWN"))
+        c2.metric("Signal", spx_monitor.get("signal_status_pill", "⚪ UNKNOWN"))
+        c3.metric("Forecast", spx_monitor.get("forecast_status_pill", "⚪ UNKNOWN"))
+        c4.metric("Comparison", spx_monitor.get("comparison_status_pill", "⚪ UNKNOWN"))
+
+        c5, c6 = st.columns(2)
+        c5.metric("Drift", spx_monitor.get("drift_status_pill", "⚪ UNKNOWN"))
+        c6.metric("Recommendation", spx_monitor.get("recommendation", "UNKNOWN"))
+
+        monitor_health = spx_monitor.get("health", {})
+        forecast_monitor = spx_monitor.get("forecast_monitor", {})
+        retraining = spx_monitor.get("retraining", {})
+
+        st.markdown("#### Current SPX State")
+        st.json(
+            {
+                "signal_date": (monitor_health.get("signal") or {}).get("signal_date"),
+                "forecast_for_date": (monitor_health.get("forecasts") or {}).get("forecast_for_date"),
+                "generated_from_feature_date": (monitor_health.get("forecasts") or {}).get("generated_from_feature_date"),
+                "drift_classification": spx_monitor.get("drift_classification"),
+                "retraining_decision": retraining.get("decision"),
+                "retraining_priority": retraining.get("priority"),
+            }
+        )
+
+        reasons = []
+        reasons.extend(monitor_health.get("reasons", []))
+        reasons.extend(forecast_monitor.get("evidence", []))
+        reasons.extend(retraining.get("reasons", []))
+
+        if reasons:
+            st.markdown("#### Reasons / Evidence")
+            for r in reasons:
+                st.write(f"- {r}")
+
+    spx = shared["spx"]
+    options = shared["options"]
 
     col1, col2 = st.columns(2)
 
@@ -86,7 +126,7 @@ def render() -> None:
         )
 
         st.markdown("#### SPX File Freshness")
-        st.dataframe(_files_df(spx["files"], spx["buckets"]), use_container_width=True)
+        st.dataframe(_files_df(spx["files"], spx["buckets"]), width="stretch")
 
     with col2:
         st.subheader("Options Algo")
@@ -104,7 +144,7 @@ def render() -> None:
         )
 
         st.markdown("#### Options File Freshness")
-        st.dataframe(_files_df(options["files"], options["buckets"]), use_container_width=True)
+        st.dataframe(_files_df(options["files"], options["buckets"]), width="stretch")
 
     st.markdown("---")
     st.subheader("Quick Verdict Guide")
@@ -123,6 +163,5 @@ For SPX, the healthy morning state is usually:
     )
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     render()

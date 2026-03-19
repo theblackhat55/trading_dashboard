@@ -9,6 +9,57 @@ import pandas as pd
 
 from dashboard.config import OPTIONS_ALGO_V2_DATA_ROOT, SPX_ALGO_ROOT
 
+SPX_MONITORING_ROOT = Path("/root/spx_algo/output/monitoring")
+
+
+def _safe_load_json(path: Path) -> dict[str, Any] | None:
+    try:
+        if not path.exists():
+            return None
+        return json.loads(path.read_text())
+    except Exception:
+        return None
+
+
+def _monitor_status_pill(status: str) -> str:
+    status = (status or "UNKNOWN").upper()
+    return {
+        "OK": "🟢 OK",
+        "WARN": "🟡 WARN",
+        "WARNING": "🟡 WARN",
+        "BAD": "🔴 BAD",
+        "DEGRADED": "🔴 DEGRADED",
+        "HEALTHY": "🟢 HEALTHY",
+        "UNKNOWN": "⚪ UNKNOWN",
+    }.get(status, f"⚪ {status}")
+
+
+def load_spx_monitoring_snapshot() -> dict[str, Any]:
+    health = _safe_load_json(SPX_MONITORING_ROOT / "health_snapshot.json") or {}
+    forecast_monitor = _safe_load_json(SPX_MONITORING_ROOT / "forecast_monitor_snapshot.json") or {}
+    retrain = _safe_load_json(SPX_MONITORING_ROOT / "retraining_recommendation.json") or {}
+    ops_summary = _safe_load_json(SPX_MONITORING_ROOT / "daily_ops_summary.json") or {}
+
+    overall_status = health.get("overall_status", "UNKNOWN")
+    drift_classification = forecast_monitor.get("classification", "UNKNOWN")
+    recommendation = retrain.get("decision", "UNKNOWN")
+    latest_drift_status = (forecast_monitor.get("drift_log") or {}).get("latest_drift_status", drift_classification)
+
+    return {
+        "health": health,
+        "forecast_monitor": forecast_monitor,
+        "retraining": retrain,
+        "ops_summary": ops_summary,
+        "overall_status": overall_status,
+        "overall_status_pill": _monitor_status_pill(overall_status),
+        "signal_status_pill": _monitor_status_pill(health.get("signal_status", "UNKNOWN")),
+        "forecast_status_pill": _monitor_status_pill(health.get("forecast_status", "UNKNOWN")),
+        "comparison_status_pill": _monitor_status_pill(health.get("comparison_status", "UNKNOWN")),
+        "drift_status_pill": _monitor_status_pill(latest_drift_status),
+        "drift_classification": drift_classification,
+        "recommendation": recommendation,
+    }
+
 
 def _safe_read_json(path: Path) -> dict[str, Any] | None:
     try:
@@ -209,17 +260,17 @@ def load_options_health(options_data_root: Path | None = None) -> dict[str, Any]
 def load_shared_health() -> dict[str, Any]:
     spx = load_spx_health()
     options = load_options_health()
-
     overall = "ok"
-    if spx["overall"] == "bad" or options["overall"] == "bad":
+    if "bad" in {spx["overall"], options["overall"]}:
         overall = "bad"
-    elif spx["overall"] == "warn" or options["overall"] == "warn":
+    elif "warn" in {spx["overall"], options["overall"]}:
         overall = "warn"
 
     return {
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
         "overall": overall,
         "overall_emoji": _status_emoji(overall),
         "spx": spx,
         "options": options,
-        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+        "spx_monitoring": load_spx_monitoring_snapshot(),
     }
