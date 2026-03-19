@@ -61,6 +61,14 @@ def render() -> None:
     st.caption(f"Generated at: {shared['generated_at']}")
 
     if spx_monitor:
+
+    ops_md_path = "/root/spx_algo/output/monitoring/daily_ops_summary.md"
+    st.markdown("#### LLM / Ops Summary")
+    try:
+        with open(ops_md_path, "r", encoding="utf-8") as f:
+            st.markdown(f.read())
+    except Exception as e:
+        st.caption(f"Could not load ops summary: {e}")
         st.subheader("SPX Monitoring Snapshot")
 
         c1, c2, c3, c4 = st.columns(4)
