@@ -27,6 +27,14 @@ if _options_algo_v2_data_root_env:
 else:
     OPTIONS_ALGO_V2_DATA_ROOT = OPTIONS_ALGO_V2_ROOT / "data"
 
+_options_algo_v2_db_path_env = os.getenv("OPTIONS_ALGO_V2_DB_PATH")
+if _options_algo_v2_db_path_env:
+    OPTIONS_ALGO_V2_DB_PATH = Path(_options_algo_v2_db_path_env)
+else:
+    OPTIONS_ALGO_V2_DB_PATH = (
+        OPTIONS_ALGO_V2_DATA_ROOT / "cache" / "market_history_watchlist60.db"
+    )
+
 # Backward-compatible aliases for older dashboard modules
 SPX_ROOT = SPX_ALGO_ROOT
 OPTIONS_ALGO_ROOT = LEGACY_OPTIONS_ALGO_ROOT
